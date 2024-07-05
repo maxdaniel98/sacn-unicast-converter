@@ -1,13 +1,13 @@
 const { Receiver, Sender } = require("sacn");
+require("dotenv").config();
 
 const config = {
-  hostListenAddr: "100.105.73.151",
-  hostSendAddr: "10.43.1.111",
-  destinationAddr: ["10.43.1.201", "10.43.1.202", "10.43.1.203"],
-  universe: 1,
-  fromChannel: 1,
-  channelCount: 512,
-  channelOffset: 0,
+  hostListenAddr: process.env.HOST_LISTEN_ADDR,
+  hostSendAddr: process.env.HOST_SEND_ADDR,
+  destinationAddr: process.env.DESTINATION_ADDR.split(",").map((addr) =>
+    addr.trim()
+  ),
+  universe: parseInt(process.env.UNIVERSE),
 };
 
 const sACN = new Receiver({
@@ -16,6 +16,32 @@ const sACN = new Receiver({
   iface: config.hostListenAddr,
   // see table 1 below for all options
 });
+
+let lastPacketTime = null;
+let packetTimer = null;
+
+console.log(
+  `Listening for DMX data on universe ${config.universe} (${config.hostListenAddr})...`
+);
+
+const receivedPacketLog = (packet) => {
+  if (lastPacketTime === null || Date.now() - lastPacketTime > 5000) {
+    console.log(
+      `Receiving DMX data on universe ${packet.universe} from ${packet.sourceName} (${packet.sourceAddr})`
+    );
+    console.log(
+      `Sending DMX data to ${config.destinationAddr.join(", ")} from ${
+        config.hostSendAddr
+      }`
+    );
+  }
+  lastPacketTime = Date.now();
+
+  clearTimeout(packetTimer);
+  packetTimer = setTimeout(() => {
+    console.log("Stopped receiving DMX data.");
+  }, 5000);
+};
 
 const sACNServers = [];
 for (let i = 0; i < config.destinationAddr.length; i++) {
@@ -30,6 +56,7 @@ for (let i = 0; i < config.destinationAddr.length; i++) {
   );
 }
 sACN.on("packet", (packet) => {
+  receivedPacketLog(packet);
   for (let i = 0; i < sACNServers.length; i++) {
     sACNServers[i].send({
       sourceName: "My NodeJS app", // optional. LED lights will use this as the name of the source lighting console.
